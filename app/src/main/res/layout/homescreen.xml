@@ -76,6 +76,12 @@
                     android:layout_marginStart="20dp" />
 
             </LinearLayout>
+            <android.support.v7.app.MediaRouteButton
+                android:id="@+id/media_route_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:mediaRouteTypes="user" />
         </LinearLayout>
 
         <!-- Kilim's Kool Komments
