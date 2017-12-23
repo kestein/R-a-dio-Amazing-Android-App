@@ -5,8 +5,10 @@ import android.content.Intent;
 import android.graphics.Rect;
 import android.media.AudioManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.support.annotation.RequiresApi;
 import android.support.design.widget.TabLayout;
 import android.support.v4.content.res.ResourcesCompat;
 import android.support.v4.graphics.drawable.RoundedBitmapDrawable;
@@ -16,10 +18,13 @@ import android.support.v4.media.session.PlaybackStateCompat;
 import android.support.v4.view.ViewPager;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.app.MediaRouteButton;
 import android.text.Html;
 import android.text.TextUtils;
 import android.text.method.LinkMovementMethod;
+import android.util.Log;
 import android.view.KeyEvent;
+import android.view.Menu;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
@@ -32,6 +37,18 @@ import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import com.google.android.gms.cast.MediaInfo;
+import com.google.android.gms.cast.MediaLoadOptions;
+import com.google.android.gms.cast.MediaMetadata;
+import com.google.android.gms.cast.MediaTrack;
+import com.google.android.gms.cast.framework.CastButtonFactory;
+import com.google.android.gms.cast.framework.CastContext;
+import com.google.android.gms.cast.framework.CastSession;
+import com.google.android.gms.cast.framework.Session;
+import com.google.android.gms.cast.framework.SessionManager;
+import com.google.android.gms.cast.framework.SessionManagerListener;
+import com.google.android.gms.cast.framework.media.RemoteMediaClient;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -69,12 +86,20 @@ public class ActivityMain extends AppCompatActivity implements ViewPager.OnPageC
     private View searchFooter;
     private AudioManager am;
     private MediaSessionCompat mMediaSession;
+    // Chromecast
+    private CastContext castContext;
+    private MediaRouteButton mMediaRouteButton;
+    private CastSession mCastSession;
+    private SessionManager mSessionManager;
+    private SessionManagerListener<CastSession> mSessionManagerListener;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         setTheme(R.style.AppTheme);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.homescreen);
+
         songTimes = new HashMap<>();
 
         viewPager = (ViewPager) findViewById(R.id.viewpager);
@@ -111,6 +136,13 @@ public class ActivityMain extends AppCompatActivity implements ViewPager.OnPageC
         mMediaSession = new MediaSessionCompat(this, "RadioMediaSession");
         mMediaSession.setFlags(MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
         mMediaSession.setActive(true);
+        // Chromecast Junk
+        initSessionManagerListener();
+        castContext = CastContext.getSharedInstance(this);
+        mSessionManager = castContext.getSessionManager();
+        mSessionManager.addSessionManagerListener(mSessionManagerListener, CastSession.class);
+        mMediaRouteButton = (MediaRouteButton) findViewById(R.id.media_route_button);
+        CastButtonFactory.setUpMediaRouteButton(getApplicationContext(), mMediaRouteButton);
     }
 
     private void maybeUpdateBluetooth() {
@@ -168,7 +200,6 @@ public class ActivityMain extends AppCompatActivity implements ViewPager.OnPageC
         sendBroadcast(i);
     }
 
-
     @Override
     public void onBackPressed() {
         if(viewPager.getCurrentItem() == 0) {
@@ -180,6 +211,12 @@ public class ActivityMain extends AppCompatActivity implements ViewPager.OnPageC
         } else {
             viewPager.setCurrentItem(0, true);
         }
+    }
+
+    @Override protected void onPause() {
+        super.onPause();
+        //mSessionManager.removeSessionManagerListener(mSessionManagerListener);
+        mCastSession = null;
     }
 
     @Override
@@ -194,6 +231,8 @@ public class ActivityMain extends AppCompatActivity implements ViewPager.OnPageC
     protected void onResume() {
         super.onResume();
         scrapeJSON(MAIN_API);
+        mCastSession = mSessionManager.getCurrentCastSession();
+        //mSessionManager.addSessionManagerListener(mSessionManagerListener);
     }
 
     @Override
@@ -919,5 +958,70 @@ public class ActivityMain extends AppCompatActivity implements ViewPager.OnPageC
             pausePlayerService();
             sendBluetoothMeta = false;
         }
+    }
+
+    private void initSessionManagerListener() {
+        mSessionManagerListener = new SessionManagerListener<CastSession>() {
+
+            @Override
+            public void onSessionEnded(CastSession session, int error) {
+                onApplicationDisconnected();
+            }
+
+            @Override
+            public void onSessionResumed(CastSession session, boolean wasSuspended) {
+                onApplicationConnected(session);
+            }
+
+            @Override
+            public void onSessionResumeFailed(CastSession session, int error) {
+                onApplicationDisconnected();
+            }
+
+            @Override
+            public void onSessionStarted(CastSession session, String sessionId) {
+                onApplicationConnected(session);
+            }
+
+            @Override
+            public void onSessionStartFailed(CastSession session, int error) {
+                onApplicationDisconnected();
+            }
+
+            @Override
+            public void onSessionStarting(CastSession session) {
+            }
+
+            @Override
+            public void onSessionEnding(CastSession session) {
+            }
+
+            @Override
+            public void onSessionResuming(CastSession session, String sessionId) {
+            }
+
+            @Override
+            public void onSessionSuspended(CastSession session, int reason) {
+            }
+
+            private void onApplicationConnected(CastSession castSession) {
+                mCastSession = castSession;
+                RemoteMediaClient remoteMediaClient = mCastSession.getRemoteMediaClient();
+                /* maybe add RemoteMedia.Listener */
+                MediaInfo m = new MediaInfo.Builder("https://stream.r-a-d.io/main.mp3")
+                        .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
+                        .setContentType("audio/mpeg")
+                        .build();
+                MediaLoadOptions mediaLoadOptions = new MediaLoadOptions.Builder()
+                        .setAutoplay(true)
+                        .build();
+                remoteMediaClient.load(m, mediaLoadOptions);
+                invalidateOptionsMenu();
+            }
+
+            private void onApplicationDisconnected() {
+                invalidateOptionsMenu();
+            }
+        };
     }
 }
