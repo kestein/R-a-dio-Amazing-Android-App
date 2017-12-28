@@ -77,6 +77,7 @@ public class RadioService extends Service {
 
                         case (AudioManager.AUDIOFOCUS_LOSS) :
                             stopPlaying();
+                            PlayerState.CURRENTLY_PLAYING = false;
                             break;
 
                         case (AudioManager.AUDIOFOCUS_GAIN) :
@@ -202,7 +203,7 @@ public class RadioService extends Service {
     }
 
     public void stopPlaying () {
-        PlayerState.CURRENTLY_PLAYING = false;
+        // PlayerState.CURRENTLY_PLAYING = false;
 
         if(sep != null)
             sep.stop();

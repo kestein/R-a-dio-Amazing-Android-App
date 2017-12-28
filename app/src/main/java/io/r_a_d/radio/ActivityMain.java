@@ -92,6 +92,7 @@ public class ActivityMain extends AppCompatActivity implements ViewPager.OnPageC
     private CastSession mCastSession;
     private SessionManager mSessionManager;
     private SessionManagerListener<CastSession> mSessionManagerListener;
+    private RemoteMediaClient mRemoteMediaClient;
 
 
     @Override
@@ -923,12 +924,22 @@ public class ActivityMain extends AppCompatActivity implements ViewPager.OnPageC
     }
 
     private void playPlayerService() {
+        if(mCastSession != null) {
+            PlayerState.CURRENTLY_PLAYING = true;
+            mRemoteMediaClient.load(setupMediaInfo(), setupMediaLoadOptions());
+            return;
+        }
         Intent i = new Intent(this, RadioService.class);
         i.putExtra("action", "io.r_a_d.radio.PLAY");
         startService(i);
     }
 
     private void pausePlayerService() {
+        PlayerState.CURRENTLY_PLAYING = false;
+        if(mCastSession != null) {
+            mRemoteMediaClient.stop();
+            return;
+        }
         Intent i = new Intent(this, RadioService.class);
         i.putExtra("action", "io.r_a_d.radio.PAUSE");
         startService(i);
@@ -1005,23 +1016,40 @@ public class ActivityMain extends AppCompatActivity implements ViewPager.OnPageC
             }
 
             private void onApplicationConnected(CastSession castSession) {
+                // Stop audio from the device itself and reset it to playing on the cast device
+                if (PlayerState.CURRENTLY_PLAYING) {
+                    pausePlayerService();
+                    PlayerState.CURRENTLY_PLAYING = true;
+                }
                 mCastSession = castSession;
-                RemoteMediaClient remoteMediaClient = mCastSession.getRemoteMediaClient();
+                mRemoteMediaClient = mCastSession.getRemoteMediaClient();
                 /* maybe add RemoteMedia.Listener */
-                MediaInfo m = new MediaInfo.Builder("https://stream.r-a-d.io/main.mp3")
-                        .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
-                        .setContentType("audio/mpeg")
-                        .build();
-                MediaLoadOptions mediaLoadOptions = new MediaLoadOptions.Builder()
-                        .setAutoplay(true)
-                        .build();
-                remoteMediaClient.load(m, mediaLoadOptions);
+                mRemoteMediaClient.load(setupMediaInfo(), setupMediaLoadOptions());
                 invalidateOptionsMenu();
             }
 
             private void onApplicationDisconnected() {
+                mRemoteMediaClient = null;
+                mCastSession = null;
+                if (PlayerState.CURRENTLY_PLAYING) {
+                    playPlayerService();
+                }
+                /* Resume playback state on the device itself */
                 invalidateOptionsMenu();
             }
         };
+    }
+
+    private MediaInfo setupMediaInfo() {
+        return new MediaInfo.Builder("https://stream.r-a-d.io/main.mp3")
+                .setStreamType(MediaInfo.STREAM_TYPE_LIVE)
+                .setContentType("audio/mpeg")
+                .build();
+    }
+
+    private  MediaLoadOptions setupMediaLoadOptions() {
+        return new MediaLoadOptions.Builder()
+                .setAutoplay(PlayerState.CURRENTLY_PLAYING)
+                .build();
     }
 }
